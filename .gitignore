@@ -9,6 +9,7 @@
 /multi_agent
 /session
 /mcp
+!/mcp/
 /reflector
 /planner
 /smart_router
