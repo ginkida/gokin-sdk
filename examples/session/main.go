@@ -45,13 +45,17 @@ func main() {
 	store := sdk.NewSessionStore(storeDir)
 
 	// Create an agent
-	agent := sdk.NewAgent("assistant", client, registry,
+	agent, err := sdk.NewAgent("assistant", client, registry,
 		sdk.WithSystemPrompt("You are a helpful assistant. Keep your responses concise."),
 		sdk.WithMaxTurns(10),
 		sdk.WithOnText(func(text string) {
 			fmt.Print(text)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	// First conversation turn
 	fmt.Println("\n--- Turn 1 ---")

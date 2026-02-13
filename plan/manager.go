@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 )
@@ -36,7 +37,7 @@ type Manager struct {
 	onStepStart      StepHandler
 	onStepComplete   StepHandler
 	onProgressUpdate func(progress *ProgressUpdate) // Progress update handler
-	undoExtension    *ManagerUndoExtension           // Undo/redo support
+	undoExtension    *ManagerUndoExtension          // Undo/redo support
 
 	// Plan persistence
 	planStore *PlanStore
@@ -207,7 +208,9 @@ func (m *Manager) StartStep(stepID int) {
 
 	// Save progress (for crash recovery - we know which step was running)
 	if store != nil {
-		_ = store.Save(plan)
+		if err := store.Save(plan); err != nil {
+			slog.Warn("failed to save plan state", "error", err)
+		}
 	}
 
 	// Send progress update
@@ -251,7 +254,9 @@ func (m *Manager) CompleteStep(stepID int, output string) {
 
 	// Save progress (for crash recovery)
 	if store != nil {
-		_ = store.Save(plan)
+		if err := store.Save(plan); err != nil {
+			slog.Warn("failed to save plan state", "error", err)
+		}
 	}
 
 	// Send progress update
@@ -298,7 +303,9 @@ func (m *Manager) FailStep(stepID int, errMsg string) {
 
 	// Auto-save failed plan for potential retry
 	if store != nil {
-		_ = store.Save(plan)
+		if err := store.Save(plan); err != nil {
+			slog.Warn("failed to save plan state", "error", err)
+		}
 	}
 
 	// Send progress update
@@ -364,7 +371,9 @@ func (m *Manager) PauseStep(stepID int, reason string) {
 
 	// Auto-save paused plan for later resume
 	if store != nil {
-		_ = store.Save(plan)
+		if err := store.Save(plan); err != nil {
+			slog.Warn("failed to save plan state", "error", err)
+		}
 	}
 
 	// Send progress update

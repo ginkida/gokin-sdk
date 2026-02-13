@@ -56,13 +56,16 @@ func main() {
     registry.MustRegister(tools.NewGlob(workDir))
     registry.MustRegister(tools.NewGrep(workDir))
 
-    agent := sdk.NewAgent("assistant", client, registry,
+    agent, err := sdk.NewAgent("assistant", client, registry,
         sdk.WithSystemPrompt("You are a helpful coding assistant."),
         sdk.WithMaxTurns(20),
         sdk.WithOnText(func(text string) {
             fmt.Print(text)
         }),
     )
+    if err != nil {
+        panic(err)
+    }
 
     result, err := agent.Run(ctx, "Find all Go files and count lines of code")
     if err != nil {

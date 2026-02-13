@@ -49,7 +49,7 @@ func main() {
 	registry.MustRegister(tools.NewGrep(workDir))
 
 	// Create agent with reflector attached
-	agent := sdk.NewAgent("reflector-demo", client, registry,
+	agent, err := sdk.NewAgent("reflector-demo", client, registry,
 		sdk.WithSystemPrompt("You are a helpful assistant. Use tools to complete tasks."),
 		sdk.WithMaxTurns(10),
 		sdk.WithReflector(reflector),
@@ -60,6 +60,10 @@ func main() {
 			fmt.Printf("\n[Tool: %s]\n", name)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Run a task that may trigger error reflection (reading a non-existent file)
 	message := "Read the file /tmp/nonexistent-gokin-test-file.txt and summarize its contents"

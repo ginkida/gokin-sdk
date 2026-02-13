@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -102,8 +103,13 @@ func (po *PromptOptimizer) RecordOutcome(promptKey, variant string, success bool
 	if merr == nil {
 		go func() {
 			dir := filepath.Dir(po.storePath)
-			_ = os.MkdirAll(dir, 0755)
-			_ = os.WriteFile(po.storePath, data, 0644)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				slog.Warn("failed to create prompt store directory", "error", err)
+				return
+			}
+			if err := os.WriteFile(po.storePath, data, 0644); err != nil {
+				slog.Warn("failed to save prompt metrics", "error", err)
+			}
 		}()
 	}
 }

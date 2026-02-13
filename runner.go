@@ -79,7 +79,10 @@ func NewRunner(client Client, registry *Registry, opts ...RunnerOption) *Runner 
 // Spawn starts a new agent synchronously and returns the result.
 func (r *Runner) Spawn(ctx context.Context, task AgentTask) (string, *AgentResult, error) {
 	id := generateID()
-	agent, _ := r.createAgent(id, task)
+	agent, _, err := r.createAgent(id, task)
+	if err != nil {
+		return id, &AgentResult{Error: err}, err
+	}
 
 	ra := &runnerAgent{
 		id:     id,
@@ -134,7 +137,10 @@ func (r *Runner) SpawnAsync(ctx context.Context, task AgentTask) (string, error)
 	}
 
 	id := generateID()
-	agent, _ := r.createAgent(id, task)
+	agent, _, err := r.createAgent(id, task)
+	if err != nil {
+		return "", fmt.Errorf("failed to create agent: %w", err)
+	}
 
 	agentCtx, cancel := context.WithCancel(ctx)
 
@@ -271,7 +277,7 @@ func (r *Runner) Memory() *SharedMemory {
 	return r.memory
 }
 
-func (r *Runner) createAgent(id string, task AgentTask) (*Agent, *Registry) {
+func (r *Runner) createAgent(id string, task AgentTask) (*Agent, *Registry, error) {
 	maxTurns := task.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = r.config.DefaultMaxTurns
@@ -315,8 +321,11 @@ func (r *Runner) createAgent(id string, task AgentTask) (*Agent, *Registry) {
 	}
 
 	agentClient := r.client.Clone()
-	agent := NewAgent(id, agentClient, registry, opts...)
-	return agent, registry
+	agent, err := NewAgent(id, agentClient, registry, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create agent: %w", err)
+	}
+	return agent, registry, nil
 }
 
 func (r *Runner) filterRegistry(agentType AgentType) *Registry {

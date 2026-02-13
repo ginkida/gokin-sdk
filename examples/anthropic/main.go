@@ -40,7 +40,7 @@ func main() {
 	registry.MustRegister(tools.NewWrite())
 
 	// Create an agent
-	agent := sdk.NewAgent("claude-assistant", client, registry,
+	agent, err := sdk.NewAgent("claude-assistant", client, registry,
 		sdk.WithSystemPrompt("You are a helpful coding assistant powered by Claude."),
 		sdk.WithMaxTurns(15),
 		sdk.WithOnText(func(text string) {
@@ -50,6 +50,10 @@ func main() {
 			fmt.Printf("\n[Tool: %s]\n", name)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	message := "What Go files are in the current directory? Briefly describe their purpose."
 	if len(os.Args) > 1 {

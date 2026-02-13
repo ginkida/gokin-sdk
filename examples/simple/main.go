@@ -43,7 +43,7 @@ func main() {
 	registry.MustRegister(tools.NewGit(workDir))
 
 	// Create an agent
-	agent := sdk.NewAgent("assistant", client, registry,
+	agent, err := sdk.NewAgent("assistant", client, registry,
 		sdk.WithSystemPrompt("You are a helpful coding assistant. Use tools to help the user."),
 		sdk.WithMaxTurns(20),
 		sdk.WithOnText(func(text string) {
@@ -53,6 +53,10 @@ func main() {
 			fmt.Printf("\n[Tool: %s]\n", name)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Run the agent
 	message := "Find all Go files in the current directory and count total lines of code"

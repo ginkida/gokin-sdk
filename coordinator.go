@@ -167,6 +167,7 @@ func (c *Coordinator) RunAll(ctx context.Context) (map[string]*AgentResult, erro
 					t.Status = TaskStatusCompleted
 				}
 				t.Result = result
+				c.unblockDependentsLocked(t.ID)
 				c.mu.Unlock()
 
 				resultsMu.Lock()
@@ -176,9 +177,6 @@ func (c *Coordinator) RunAll(ctx context.Context) (map[string]*AgentResult, erro
 				if c.onTaskComplete != nil {
 					c.onTaskComplete(t.ID, t)
 				}
-
-				// Unblock dependent tasks
-				c.unblockDependents(t.ID)
 			}(task)
 		}
 
@@ -210,7 +208,10 @@ func (c *Coordinator) RunParallel(ctx context.Context, tasks []AgentTask) ([]*Ag
 				return
 			}
 
-			_, result, _ := c.runner.Spawn(ctx, t)
+			_, result, err := c.runner.Spawn(ctx, t)
+			if err != nil && result == nil {
+				result = &AgentResult{Error: err}
+			}
 			mu.Lock()
 			results[idx] = result
 			mu.Unlock()
@@ -353,7 +354,12 @@ func (c *Coordinator) allDone() bool {
 func (c *Coordinator) unblockDependents(completedID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.unblockDependentsLocked(completedID)
+}
 
+// unblockDependentsLocked transitions blocked tasks to ready when dependencies are met.
+// Caller must hold c.mu.
+func (c *Coordinator) unblockDependentsLocked(completedID string) {
 	for _, t := range c.tasks {
 		if t.Status != TaskStatusBlocked {
 			continue

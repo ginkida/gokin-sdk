@@ -62,7 +62,7 @@ func main() {
 	fmt.Printf("Registered tools: %v\n\n", registry.Names())
 
 	// Create an agent with MCP tools
-	agent := sdk.NewAgent("assistant", client, registry,
+	agent, err := sdk.NewAgent("assistant", client, registry,
 		sdk.WithSystemPrompt("You are an assistant with access to MCP tools for filesystem operations."),
 		sdk.WithMaxTurns(10),
 		sdk.WithOnText(func(text string) {
@@ -72,6 +72,10 @@ func main() {
 			fmt.Printf("\n[MCP Tool: %s]\n", name)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	message := "List the files in /tmp"
 	if len(os.Args) > 1 {

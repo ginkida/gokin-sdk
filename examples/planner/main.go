@@ -47,7 +47,7 @@ func main() {
 	registry.MustRegister(tools.NewTree(workDir))
 
 	// Create agent with planner for plan-driven execution
-	agent := sdk.NewAgent("planner-demo", client, registry,
+	agent, err := sdk.NewAgent("planner-demo", client, registry,
 		sdk.WithSystemPrompt("You are a coding assistant that plans before acting."),
 		sdk.WithMaxTurns(30),
 		sdk.WithPlanner(planner),
@@ -61,6 +61,10 @@ func main() {
 			fmt.Printf("\n[Tool: %s]\n", name)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create agent: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Run a multi-step task that benefits from planning
 	message := "Find all Go files in this directory, count total lines, and list the top 3 largest files"

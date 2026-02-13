@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -65,10 +66,10 @@ type Agent struct {
 	onProgress func(AgentProgress)
 
 	// Enhanced loop detection
-	callHistory   map[string]int
-	callHistoryMu sync.Mutex
+	callHistory    map[string]int
+	callHistoryMu  sync.Mutex
 	loopIntervened bool
-	broadHistory  map[string]int // tool name only (no args)
+	broadHistory   map[string]int // tool name only (no args)
 
 	// Context injection
 	pinnedContext string
@@ -81,19 +82,19 @@ type Agent struct {
 	toolsMu   sync.Mutex
 
 	// Plan execution
-	planner          *Planner
-	activePlan       *PlanLifecycle
-	planningMode     bool
-	onPlanApproved   func(summary string)
+	planner        *Planner
+	activePlan     *PlanLifecycle
+	planningMode   bool
+	onPlanApproved func(summary string)
 }
 
 // NewAgent creates a new agent with the given name, client, and tool registry.
-func NewAgent(name string, client Client, registry *Registry, opts ...AgentOption) *Agent {
+func NewAgent(name string, client Client, registry *Registry, opts ...AgentOption) (*Agent, error) {
 	if client == nil {
-		panic("sdk.NewAgent: client must not be nil")
+		return nil, fmt.Errorf("sdk.NewAgent: client must not be nil")
 	}
 	if registry == nil {
-		panic("sdk.NewAgent: registry must not be nil")
+		return nil, fmt.Errorf("sdk.NewAgent: registry must not be nil")
 	}
 
 	a := &Agent{
@@ -113,7 +114,7 @@ func NewAgent(name string, client Client, registry *Registry, opts ...AgentOptio
 		opt(a)
 	}
 
-	return a
+	return a, nil
 }
 
 // buildSystemPrompt constructs the full system prompt including pinned context and memory.
@@ -362,10 +363,10 @@ func (a *Agent) Run(ctx context.Context, message string) (*AgentResult, error) {
 		// Delegation check: if stuck for too long, try delegating
 		if a.delegation != nil && a.runner != nil && stuckCount >= 3 {
 			delCtx := DelegationContext{
-				CurrentTurn:  turns,
-				LastToolName: lastToolName,
+				CurrentTurn:   turns,
+				LastToolName:  lastToolName,
 				LastToolError: lastToolError,
-				StuckCount:   stuckCount,
+				StuckCount:    stuckCount,
 			}
 			decision := a.delegation.Evaluate(delCtx)
 			if decision.ShouldDelegate {
@@ -481,9 +482,15 @@ func (a *Agent) runWithPlan(ctx context.Context, message string) (*AgentResult, 
 				if err := lifecycle.TransitionTo(PlanStateFailed); err != nil {
 					break // can't transition — skip replan
 				}
-				_ = lifecycle.RequestReplan(result.Error)
-				_ = lifecycle.TransitionTo(PlanStateApproved)
-				_ = lifecycle.TransitionTo(PlanStateExecuting)
+				if err := lifecycle.RequestReplan(result.Error); err != nil {
+					slog.Warn("plan replan request failed", "error", err)
+				}
+				if err := lifecycle.TransitionTo(PlanStateApproved); err != nil {
+					slog.Warn("plan transition to approved failed", "error", err)
+				}
+				if err := lifecycle.TransitionTo(PlanStateExecuting); err != nil {
+					slog.Warn("plan transition to executing failed", "error", err)
+				}
 
 				newTree, rerr := a.planner.BuildPlan(ctx, PlanGoal{
 					Description: message + "\nPrevious error: " + result.Error,
@@ -499,7 +506,9 @@ func (a *Agent) runWithPlan(ctx context.Context, message string) (*AgentResult, 
 
 			// Exhausted replans
 			a.setProgressStatus(AgentStatusFailed)
-			_ = lifecycle.TransitionTo(PlanStateFailed)
+			if err := lifecycle.TransitionTo(PlanStateFailed); err != nil {
+				slog.Warn("plan transition to failed state failed", "error", err)
+			}
 			return &AgentResult{
 				Text:     strings.Join(outputs, "\n"),
 				Turns:    replans,
@@ -518,7 +527,9 @@ func (a *Agent) runWithPlan(ctx context.Context, message string) (*AgentResult, 
 		}
 	}
 
-	_ = lifecycle.TransitionTo(PlanStateCompleted)
+	if err := lifecycle.TransitionTo(PlanStateCompleted); err != nil {
+		slog.Warn("plan transition to completed failed", "error", err)
+	}
 	a.setProgressStatus(AgentStatusCompleted)
 
 	return &AgentResult{

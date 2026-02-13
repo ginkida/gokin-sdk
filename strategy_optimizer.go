@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -79,8 +80,13 @@ func (so *StrategyOptimizer) RecordOutcome(taskType, strategy string, success bo
 	if merr == nil {
 		go func() {
 			dir := filepath.Dir(so.storePath)
-			_ = os.MkdirAll(dir, 0755)
-			_ = os.WriteFile(so.storePath, data, 0644)
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				slog.Warn("failed to create strategy store directory", "error", err)
+				return
+			}
+			if err := os.WriteFile(so.storePath, data, 0644); err != nil {
+				slog.Warn("failed to save strategy metrics", "error", err)
+			}
 		}()
 	}
 }

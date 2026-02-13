@@ -1,6 +1,7 @@
 package fileutil
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -194,13 +195,13 @@ func (tx *FileTransaction) Commit() error {
 	}
 
 	if err := tx.backupPhase(); err != nil {
-		tx.rollbackInternal()
-		return fmt.Errorf("backup phase failed: %w", err)
+		rbErr := tx.rollbackInternal()
+		return errors.Join(fmt.Errorf("backup phase failed: %w", err), rbErr)
 	}
 
 	if err := tx.applyPhase(); err != nil {
-		tx.rollbackInternal()
-		return fmt.Errorf("apply phase failed: %w", err)
+		rbErr := tx.rollbackInternal()
+		return errors.Join(fmt.Errorf("apply phase failed: %w", err), rbErr)
 	}
 
 	tx.committed = true
@@ -301,11 +302,11 @@ func (tx *FileTransaction) Rollback() error {
 		return nil
 	}
 
-	tx.rollbackInternal()
-	return nil
+	return tx.rollbackInternal()
 }
 
-func (tx *FileTransaction) rollbackInternal() {
+func (tx *FileTransaction) rollbackInternal() error {
+	var errs []error
 	for i := len(tx.operations) - 1; i >= 0; i-- {
 		op := &tx.operations[i]
 		if !op.Applied {
@@ -315,20 +316,30 @@ func (tx *FileTransaction) rollbackInternal() {
 		switch op.Type {
 		case OpWrite:
 			if op.BackupFile != "" {
-				_ = copyFile(op.BackupFile, op.Path)
+				if err := copyFile(op.BackupFile, op.Path); err != nil {
+					errs = append(errs, fmt.Errorf("rollback write restore %s: %w", op.Path, err))
+				}
 			} else {
-				_ = os.Remove(op.Path)
+				if err := os.Remove(op.Path); err != nil {
+					errs = append(errs, fmt.Errorf("rollback write remove %s: %w", op.Path, err))
+				}
 			}
 		case OpDelete:
 			if op.BackupFile != "" {
-				_ = copyFile(op.BackupFile, op.Path)
+				if err := copyFile(op.BackupFile, op.Path); err != nil {
+					errs = append(errs, fmt.Errorf("rollback delete restore %s: %w", op.Path, err))
+				}
 			}
 		case OpRename:
-			_ = os.Rename(op.NewPath, op.Path)
+			if err := os.Rename(op.NewPath, op.Path); err != nil {
+				errs = append(errs, fmt.Errorf("rollback rename %s: %w", op.Path, err))
+			}
 		case OpChmod:
 			if op.BackupFile != "" {
 				if info, err := os.Stat(op.BackupFile); err == nil {
-					_ = os.Chmod(op.Path, info.Mode())
+					if err := os.Chmod(op.Path, info.Mode()); err != nil {
+						errs = append(errs, fmt.Errorf("rollback chmod %s: %w", op.Path, err))
+					}
 				}
 			}
 		}
@@ -336,6 +347,7 @@ func (tx *FileTransaction) rollbackInternal() {
 
 	tx.rolledBack = true
 	tx.cleanup()
+	return errors.Join(errs...)
 }
 
 func (tx *FileTransaction) cleanup() {
