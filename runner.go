@@ -58,9 +58,9 @@ type RunnerConfig struct {
 // NewRunner creates a new multi-agent runner.
 func NewRunner(client Client, registry *Registry, opts ...RunnerOption) *Runner {
 	r := &Runner{
-		client:  client,
+		client:   client,
 		registry: registry,
-		memory:  NewSharedMemory(),
+		memory:   NewSharedMemory(),
 		config: RunnerConfig{
 			DefaultMaxTurns: 30,
 			DefaultTimeout:  10 * time.Minute,
@@ -97,14 +97,13 @@ func (r *Runner) Spawn(ctx context.Context, task AgentTask) (string, *AgentResul
 	}
 
 	result, err := agent.Run(ctx, task.Prompt)
+	r.mu.Lock()
 	if err != nil {
 		ra.status = AgentStatusFailed
 		result = &AgentResult{Error: err}
 	} else {
 		ra.status = AgentStatusCompleted
 	}
-
-	r.mu.Lock()
 	r.results[id] = result
 	r.mu.Unlock()
 
@@ -174,6 +173,8 @@ func (r *Runner) SpawnAsync(ctx context.Context, task AgentTask) (string, error)
 		if r.config.OnAgentComplete != nil {
 			r.config.OnAgentComplete(id, result)
 		}
+
+		r.cleanupOld()
 	}()
 
 	return id, nil

@@ -3,6 +3,7 @@ package security
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -136,17 +137,45 @@ func (sc *SandboxedCommand) Run(timeout time.Duration) *SandboxResult {
 		return result
 	}
 
-	result.Stdout, _ = readWithTimeout(stdout, timeout)
-	result.Stderr, _ = readWithTimeout(stderr, timeout)
+	type streamReadResult struct {
+		data []byte
+		err  error
+	}
 
-	err = sc.cmd.Wait()
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+	stdoutCh := make(chan streamReadResult, 1)
+	stderrCh := make(chan streamReadResult, 1)
+	go func() {
+		data, err := readWithTimeout(stdout, timeout)
+		stdoutCh <- streamReadResult{data: data, err: err}
+	}()
+	go func() {
+		data, err := readWithTimeout(stderr, timeout)
+		stderrCh <- streamReadResult{data: data, err: err}
+	}()
+
+	waitErr := sc.cmd.Wait()
+	stdoutRes := <-stdoutCh
+	stderrRes := <-stderrCh
+	result.Stdout = stdoutRes.data
+	result.Stderr = stderrRes.data
+
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			result.ExitCode = exitErr.ExitCode()
 			result.Error = nil
 		} else {
-			result.Error = err
+			result.Error = waitErr
 		}
+	} else if sc.cmd.ProcessState != nil {
+		result.ExitCode = sc.cmd.ProcessState.ExitCode()
+	}
+
+	streamErr := errors.Join(
+		wrapStreamReadError("stdout", stdoutRes.err),
+		wrapStreamReadError("stderr", stderrRes.err),
+	)
+	if streamErr != nil && result.Error == nil {
+		result.Error = streamErr
 	}
 
 	return result
@@ -157,6 +186,12 @@ func readWithTimeout(pipe interface{}, timeout time.Duration) ([]byte, error) {
 	reader, ok := pipe.(io.Reader)
 	if !ok {
 		return nil, fmt.Errorf("pipe is not an io.Reader")
+	}
+
+	if timeout <= 0 {
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, reader)
+		return buf.Bytes(), err
 	}
 
 	type readResult struct {
@@ -180,6 +215,13 @@ func readWithTimeout(pipe interface{}, timeout time.Duration) ([]byte, error) {
 	case result := <-resultChan:
 		return result.data, result.err
 	}
+}
+
+func wrapStreamReadError(stream string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("failed to read %s: %w", stream, err)
 }
 
 // IsSandboxSupported checks if the current system supports sandboxing features.
