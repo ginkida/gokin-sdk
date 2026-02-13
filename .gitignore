@@ -1,0 +1,42 @@
+# Compiled binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/simple
+/anthropic
+/multi_agent
+/session
+/mcp
+/reflector
+/planner
+/smart_router
+
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Strategy optimizer data
+*.strategies.json
+
+# Temporary files
+/tmp/
+
+# Claude Code
+CLAUDE.md
+.claude/
